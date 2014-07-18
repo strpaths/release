@@ -934,9 +934,9 @@ public class MyStrongestPathPlugin extends CytoscapePlugin {
 			textOuterPanel.add(textPanel);
 
 			panel.setLayout(new GridLayout(2, 1));
-			panel.add(browseOuterPanel);
 			panel.add(textOuterPanel);
-
+			panel.add(browseOuterPanel);
+			
 			browseOuterPanel.setEnabled(false);
 			browseButton.setEnabled(false);
 			fileAddress.setEnabled(false);
@@ -1040,9 +1040,9 @@ public class MyStrongestPathPlugin extends CytoscapePlugin {
 			textOuterPanel.add(textPanel);
 
 			panel.setLayout(new GridLayout(2, 1));
-			panel.add(browseOuterPanel);
 			panel.add(textOuterPanel);
-
+			panel.add(browseOuterPanel);
+			
 			browseOuterPanel.setEnabled(false);
 			browseButton.setEnabled(false);
 			fileAddress.setEnabled(false);
