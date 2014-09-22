@@ -7,11 +7,14 @@ import java.awt.FlowLayout;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.GridLayout;
+import java.awt.LayoutManager;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.awt.event.FocusEvent;
 import java.awt.event.FocusListener;
-import java.beans.PropertyVetoException;
+import java.awt.event.WindowAdapter;
+import java.awt.event.WindowEvent;
+import java.awt.event.WindowListener;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.File;
@@ -22,10 +25,20 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.LineNumberReader;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Hashtable;
+import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Scanner;
+import java.util.Set;
+import java.util.Vector;
 
-import javax.swing.AbstractButton;
 import javax.swing.BorderFactory;
 import javax.swing.BoxLayout;
 import javax.swing.ButtonGroup;
@@ -33,7 +46,6 @@ import javax.swing.DefaultBoundedRangeModel;
 import javax.swing.JButton;
 import javax.swing.JCheckBox;
 import javax.swing.JComponent;
-import javax.swing.JDialog;
 import javax.swing.JFileChooser;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
@@ -50,21 +62,24 @@ import javax.swing.border.TitledBorder;
 import javax.swing.event.ChangeEvent;
 import javax.swing.event.ChangeListener;
 
-import cytoscape.CyEdge;
-import cytoscape.CyNetwork;
-import cytoscape.CyNode;
-import cytoscape.Cytoscape;
-import cytoscape.data.CyAttributes;
-import cytoscape.data.Semantics;
-import cytoscape.data.readers.VisualStyleBuilder;
-import cytoscape.layout.AbstractLayout;
-import cytoscape.layout.CyLayoutAlgorithm;
-import cytoscape.layout.CyLayouts;
-import cytoscape.plugin.CytoscapePlugin;
-import cytoscape.util.CytoscapeAction;
-import cytoscape.view.CyNetworkView;
-import cytoscape.visual.NodeShape;
-import cytoscape.visual.VisualPropertyType;
+import org.cytoscape.app.CyAppAdapter;
+import org.cytoscape.app.swing.AbstractCySwingApp;
+import org.cytoscape.app.swing.CySwingAppAdapter;
+import org.cytoscape.application.CyApplicationManager;
+import org.cytoscape.application.swing.AbstractCyAction;
+import org.cytoscape.model.CyEdge;
+import org.cytoscape.model.CyNetwork;
+import org.cytoscape.model.CyNetworkFactory;
+import org.cytoscape.model.CyNode;
+import org.cytoscape.model.CyRow;
+import org.cytoscape.model.CyTable;
+import org.cytoscape.view.layout.CyLayoutAlgorithm;
+import org.cytoscape.view.model.CyNetworkView;
+import org.cytoscape.view.presentation.property.BasicVisualLexicon;
+import org.cytoscape.view.presentation.property.NodeShapeVisualProperty;
+import org.cytoscape.view.presentation.property.values.NodeShape;
+import org.cytoscape.view.vizmap.VisualStyle;
+import org.cytoscape.work.TaskIterator;
 
 class BFSInfos {
 	public HashMap<Integer, Integer> heights;
@@ -72,16 +87,24 @@ class BFSInfos {
 
 }
 
-public class MyStrongestPathPlugin extends CytoscapePlugin {
+public class MyStrongestPathPlugin extends AbstractCySwingApp {
 
 	String styleName = "myVisualStyle";
 	private final String[] databases = { "bind", "CORUM", "dip", "grid",
 			"HPRD", "InnateDB", "MatrixDB", "mint", "MPPI", "ophid", "intact",
 			"string" };
+	private final String[] databaseLabels = { "BIND", "CORUM", "DIP",
+			"BioGRID", "HPRD", "InnateDB", "MatrixDB", "MINT", "MPPI", "Ophid",
+			"IntAct", "STRING" };
+	private final HashSet<String> excludeDatabases = new HashSet<String>();
+	{
+		excludeDatabases.add("ophid");
+		excludeDatabases.add("HPRD");
+	}
 
 	private String networkViewIdentifier = "StrongestPathNetworkView";
 	private int networkViewNum = 0;
-	VisualStyleBuilder graphStyle = new VisualStyleBuilder(styleName, false);
+
 	protected String DATAspecies;
 	public StrongestPath strongestPath;
 	protected String DATAdatabaseName = "binary-human-bind";
@@ -104,21 +127,25 @@ public class MyStrongestPathPlugin extends CytoscapePlugin {
 	public JButton selectAllSP;
 	public JButton deselectAllSP;
 
-	public MyStrongestPathPlugin() {
+	// public VisualStyleFactory visualStyleFactoryServiceRef;
+	public VisualStyle visualStyle;
 
-		MyPluginMenuAction menuAction = new MyPluginMenuAction(this);
-		Cytoscape.getDesktop().getCyMenus()
-				.addCytoscapeAction((CytoscapeAction) menuAction);
+	// Old 2.x
+	// VisualStyleBuilder graphStyle = new VisualStyleBuilder(styleName, false);
+
+	public MyStrongestPathPlugin(CySwingAppAdapter adapter) {
+
+		super(adapter);
+		adapter.getCySwingApplication().addAction(
+				new MyPluginMenuAction(adapter));
 	}
 
-	public static void main(String[] args) {
-		MyStrongestPathPlugin p = new MyStrongestPathPlugin();
-		p.activate();
+	public class MyPluginMenuAction extends AbstractCyAction {
 
-	}
-
-	public class MyPluginMenuAction extends CytoscapeAction {
-
+		/**
+		 * 
+		 */
+		private static final long serialVersionUID = 3851939337950955364L;
 		final public static String HUMAN = Nomenclature.HUMANSPEICEID;
 		final public static String MOUSE = Nomenclature.MOUSESPEICEID;
 		final public static String RAT = Nomenclature.RATSPEICEID;
@@ -191,14 +218,36 @@ public class MyStrongestPathPlugin extends CytoscapePlugin {
 		private String annotFile;
 		private boolean selectedAllE = false;
 		private boolean selectedAllSP = false;
+		private CyAppAdapter adapter;
+		final CyApplicationManager manager;
 
-		public MyPluginMenuAction(MyStrongestPathPlugin myPlugin) {
-			super("Strongest Path");
-			setPreferredMenu("Plugins");
+		public MyPluginMenuAction(CyAppAdapter adapter) {
+			super("Strongest Path", adapter.getCyApplicationManager(),
+					"network", adapter.getCyNetworkViewManager());
+			// super("Strongest Path");
+			this.adapter = adapter;
+			setPreferredMenu("Apps");
+			manager = adapter.getCyApplicationManager();
+			visualStyle = this.adapter.getVisualStyleFactory()
+					.createVisualStyle(styleName);
 
 		}
 
-		protected void finalize() throws Throwable {
+		protected void addNodeIDColumn(CyNetwork network) {
+			CyTable nodeTable = network.getDefaultNodeTable();
+			CyTable edgeTable = network.getDefaultEdgeTable();
+			if (nodeTable.getColumn("nodeID") == null) {
+				nodeTable.createColumn("nodeID", String.class, false);
+			}
+			if (nodeTable.getColumn("Path Confidence") == null) {
+				nodeTable.createColumn("Path Confidence", String.class, false);
+			}
+			if (edgeTable.getColumn("Database") == null) {
+				edgeTable.createColumn("Database", String.class, false);
+			}
+		}
+
+		private void doFinalize() {
 			for (String dbn : subNetworks.keySet())
 				subNetworks.put(dbn, null);
 			for (String dbn : subNetworks.keySet())
@@ -209,8 +258,13 @@ public class MyStrongestPathPlugin extends CytoscapePlugin {
 			System.gc();
 		}
 
+		protected void finalize() throws Throwable {
+			doFinalize();
+		}
+
 		@Override
 		public void actionPerformed(ActionEvent arg0) {
+
 			SwingUtilities.invokeLater(new Runnable() {
 				public void run() {
 					// Turn off metal's use of bold fonts
@@ -244,11 +298,32 @@ public class MyStrongestPathPlugin extends CytoscapePlugin {
 			uploadUserDBPanel.setVisible(false);
 			pluginMainPanel.setVisible(false);
 
-			// databaseModePanel.setLocation(10, 10);
 			topPanel.add(databaseModePanel);
 			topPanel.add(uploadUserDBPanel);
 			topPanel.add(pluginMainPanel);
 
+		}
+
+		private CyNode getNodeWithValue(final CyNetwork network,
+				final String colname, final Object value) {
+			CyTable table = network.getDefaultNodeTable();
+			final Collection<CyRow> matchingRows = table.getMatchingRows(
+					colname, value);
+			final Set<CyNode> nodes = new HashSet<CyNode>();
+			final String primaryKeyColname = table.getPrimaryKey().getName();
+			if (matchingRows.size() != 0) {
+				for (final CyRow row : matchingRows) {
+					final Long nodeId = row.get(primaryKeyColname, Long.class);
+					if (nodeId == null)
+						continue;
+					final CyNode node = network.getNode(nodeId);
+					if (node == null)
+						continue;
+					nodes.add(node);
+				}
+				return nodes.iterator().next();
+			} else
+				return null;
 		}
 
 		private void initializeSelectDatabaseModePanel() {
@@ -420,9 +495,7 @@ public class MyStrongestPathPlugin extends CytoscapePlugin {
 									JOptionPane.showMessageDialog(null,
 											e.getMessage());
 									e.printStackTrace();
-								}
-								finally
-								{
+								} finally {
 									frame.setCursor(new Cursor(
 											Cursor.DEFAULT_CURSOR));
 								}
@@ -477,10 +550,19 @@ public class MyStrongestPathPlugin extends CytoscapePlugin {
 			selectAllSP.setEnabled(enable);
 			deselectAllSP.setEnabled(enable);
 			for (int i = 0; i < databaseSelectionE.length; i++) {
-				databaseSelectionE[i].setEnabled(enable);
+				if (DATAspecies.equals(MOUSE)
+						&& excludeDatabases.contains(databases[i]))
+					databaseSelectionE[i].setEnabled(false);
+				else
+					databaseSelectionE[i].setEnabled(enable);
+
 			}
 			for (int i = 0; i < databaseSelectionSP.length; i++) {
-				databaseSelectionSP[i].setEnabled(enable);
+				if (DATAspecies.equals(MOUSE)
+						&& excludeDatabases.contains(databases[i]))
+					databaseSelectionSP[i].setEnabled(false);
+				else
+					databaseSelectionSP[i].setEnabled(enable);
 			}
 		}
 
@@ -489,7 +571,7 @@ public class MyStrongestPathPlugin extends CytoscapePlugin {
 
 			growthDataPanel.setLayout(new GridLayout(4, 1));
 
-			JPanel sourceNodesPanel = createNodesInputDataPanelNew(true);
+			JPanel sourceNodesPanel = createNodesInputDataPanelNew(true, true);
 			growthDataPanel.add(sourceNodesPanel);
 
 			// ************** starting database panel
@@ -500,13 +582,13 @@ public class MyStrongestPathPlugin extends CytoscapePlugin {
 					(databases.length + 2) / 4, 4));
 			setBorder(databaseChoosePanel, " Select the databases: ");
 			for (int i = 0; i < databases.length; i++) {
-				databaseSelectionE[i] = new JCheckBox(databases[i]);
+				databaseSelectionE[i] = new JCheckBox(databaseLabels[i]);
 				databaseChoosePanelWrapper.add(databaseSelectionE[i]);
 			}
 
 			JPanel selectButtons = new JPanel(false);
 			selectAllE = new JButton(" Select All ");
-			deselectAllE = new JButton(" Deselect All ");
+			deselectAllE = new JButton(" Select None ");
 			selectButtons.setLayout(new GridLayout(2, 1));
 			selectButtons.add(selectAllE, gbc);
 			selectButtons.add(deselectAllE, gbc);
@@ -516,11 +598,21 @@ public class MyStrongestPathPlugin extends CytoscapePlugin {
 
 			growthDataPanel.add(databaseChoosePanel);
 
+			// *************** expand panel
+			JPanel expandPanel = new JPanel(false);
+			expandPanel.setLayout(new GridBagLayout());
+
+			setBorder(expandPanel, " Display network ");
+			final JButton showNetworkButton = new JButton(" Show network ");
+			expandPanel.add(showNetworkButton, gbc);
+			growthDataPanel.add(expandPanel);
+
 			// *************** starting navigation panel
 			JPanel numberOfNewNodesPanel = new JPanel(false);
 			numberOfNewNodesPanel.setLayout(new GridBagLayout());
 			setBorder(numberOfNewNodesPanel, " Expand network ");
-			JLabel numberOfNewNodesLabel = new JLabel("Number of nodes: ");
+			JLabel numberOfNewNodesLabel = new JLabel(
+					"Number of genes/proteins: ");
 			numberOfNewNodesText = new JTextField(5);
 			numberOfNewNodesText.setText("10");
 			gbc = new GridBagConstraints();
@@ -530,15 +622,6 @@ public class MyStrongestPathPlugin extends CytoscapePlugin {
 			expand.setEnabled(false);
 			numberOfNewNodesPanel.add(expand, gbc);
 			growthDataPanel.add(numberOfNewNodesPanel);
-
-			// *************** expand panel
-			JPanel expandPanel = new JPanel(false);
-			expandPanel.setLayout(new GridBagLayout());
-
-			setBorder(expandPanel, " Display network ");
-			final JButton showNetworkButton = new JButton(" Show network ");
-			expandPanel.add(showNetworkButton, gbc);
-			growthDataPanel.add(expandPanel);
 
 			// ******************** action listeners
 
@@ -576,7 +659,8 @@ public class MyStrongestPathPlugin extends CytoscapePlugin {
 					if (DATAdatabaseNames.size() == 0 && !networkFromFile) {
 						JOptionPane.showMessageDialog(null,
 								" Please select at least one database ");
-					} else if (srcFromFileE && srcfileAddressE.getText().equals("")) {
+					} else if (srcFromFileE
+							&& srcfileAddressE.getText().equals("")) {
 						JOptionPane.showMessageDialog(null,
 								" Please select your source genes ");
 						srcActionListenerE.actionPerformed(arg0);
@@ -619,7 +703,11 @@ public class MyStrongestPathPlugin extends CytoscapePlugin {
 				@Override
 				public void actionPerformed(ActionEvent arg0) {
 					for (int i = 0; i < databases.length; i++) {
-						databaseSelectionE[i].setSelected(true);
+						if (DATAspecies.equals(MOUSE)
+								&& excludeDatabases.contains(databases[i]))
+							databaseSelectionE[i].setSelected(false);
+						else
+							databaseSelectionE[i].setSelected(true);
 					}
 					selectedAllSP = true;
 				}
@@ -689,7 +777,7 @@ public class MyStrongestPathPlugin extends CytoscapePlugin {
 					.ceil((databases.length + 1) / 4), 4));
 			setBorder(databaseChoosePanelSP, " Select the databases: ");
 			for (int i = 0; i < databases.length; i++) {
-				databaseSelectionSP[i] = new JCheckBox(databases[i]);
+				databaseSelectionSP[i] = new JCheckBox(databaseLabels[i]);
 				databaseChooseWrapperPanel.add(databaseSelectionSP[i]);
 			}
 			// databaseSelectionSP[databases.length] = new
@@ -697,7 +785,7 @@ public class MyStrongestPathPlugin extends CytoscapePlugin {
 			// databaseChoosePanelSP.add(databaseSelectionSP[databases.length]);
 			JPanel selectButtons = new JPanel(false);
 			selectAllSP = new JButton(" Select All ");
-			deselectAllSP = new JButton(" Deselect All ");
+			deselectAllSP = new JButton(" Select None ");
 			selectButtons.setLayout(new GridLayout(2, 1));
 			selectButtons.add(selectAllSP, gbc);
 			selectButtons.add(deselectAllSP, gbc);
@@ -708,8 +796,8 @@ public class MyStrongestPathPlugin extends CytoscapePlugin {
 			// *************** Threshold panel
 			JPanel thresholdPanel = new JPanel(false);
 			setBorder(thresholdPanel, " Select Maximum Distance Threshold: ");
-			thresholdPanel.setLayout(new BoxLayout(thresholdPanel,
-					BoxLayout.Y_AXIS));
+			thresholdPanel.setLayout((LayoutManager) new BoxLayout(
+					thresholdPanel, BoxLayout.Y_AXIS));
 			final JSlider thresholdSlider = new JSlider(0, 1000, 0);
 			thresholdSlider.setMajorTickSpacing(50);
 			thresholdSlider.setPaintTicks(true);
@@ -757,11 +845,14 @@ public class MyStrongestPathPlugin extends CytoscapePlugin {
 					for (int i = 0; i < databases.length; i++) {
 						if (databaseSelectionSP[i].isSelected())
 							DATAdatabaseNames.add(databases[i]);
+
 					}
+
 					if (DATAdatabaseNames.size() == 0 && !networkFromFile) {
 						JOptionPane.showMessageDialog(null,
 								" Please select at least one database ");
-					}else if (srcFromFile && srcfileAddress.getText().equals("")) {
+					} else if (srcFromFile
+							&& srcfileAddress.getText().equals("")) {
 						JOptionPane.showMessageDialog(null,
 								" Please select your source genes ");
 						srcActionListener.actionPerformed(arg0);
@@ -781,6 +872,7 @@ public class MyStrongestPathPlugin extends CytoscapePlugin {
 								" Please select your source genes ");
 						dstTextField.requestFocus();
 					} else {
+
 						panelList[1].setVisible(false);
 						panelList[2].setVisible(true);
 
@@ -800,7 +892,6 @@ public class MyStrongestPathPlugin extends CytoscapePlugin {
 						// ***** Do the Job ******
 						doKStrongestPath();
 					}
-
 				}
 			});
 
@@ -809,7 +900,11 @@ public class MyStrongestPathPlugin extends CytoscapePlugin {
 				@Override
 				public void actionPerformed(ActionEvent arg0) {
 					for (int i = 0; i < databases.length; i++) {
-						databaseSelectionSP[i].setSelected(true);
+						if (DATAspecies.equals(MOUSE)
+								&& excludeDatabases.contains(databases[i]))
+							databaseSelectionSP[i].setSelected(false);
+						else
+							databaseSelectionSP[i].setSelected(true);
 					}
 					selectedAllSP = true;
 				}
@@ -895,15 +990,26 @@ public class MyStrongestPathPlugin extends CytoscapePlugin {
 			return panel;
 		}
 
-		private JPanel createNodesInputDataPanelNew(final boolean src) {
+		// TODO Baraye StrongesthPath bayad az tabeye createNodesInputDataPanel2
+		// estefade beshe!!!!
+		private JPanel createNodesInputDataPanelNew(final boolean src,
+				final boolean expand) {
 
 			JPanel panel = new JPanel(false);
-			String title = src ? " Select genes: "
-					: " Select destination genes: ";
+			String title = expand ? "Input genes/proteins"
+					: src ? " Source genes/proteins: "
+							: " Target genes/proteins: ";
 			setBorder(panel, title);
-			final JRadioButton browseMode = new JRadioButton(" From file ");
+			// final JRadioButton browseMode = new
+			// JRadioButton("  List of names (comma separated) ");
+			// final JRadioButton textMode = new
+			// JRadioButton(" Read from file (one name per line) ");
+			final JRadioButton browseMode = new JRadioButton("Read from file");
+			browseMode
+					.setToolTipText(" There should be one name per line in the input file ");
 			final JRadioButton textMode = new JRadioButton(
-					" Type (comma seperated) ");
+					"List of names                        ");
+			textMode.setToolTipText(" Genes/Proteins should be separated by comma ");
 			ButtonGroup group = new ButtonGroup();
 			group.add(browseMode);
 			group.add(textMode);
@@ -914,6 +1020,8 @@ public class MyStrongestPathPlugin extends CytoscapePlugin {
 
 			JPanel browsePanel = new JPanel(false);
 			final JTextField fileAddress = new JTextField(20);
+			fileAddress
+					.setToolTipText(" There should be one name per line in the input file ");
 			final JButton browseButton = new JButton("Browse");
 			browsePanel.add(browseButton);
 			browsePanel.add(fileAddress);
@@ -924,6 +1032,8 @@ public class MyStrongestPathPlugin extends CytoscapePlugin {
 			textOuterPanel.setLayout(new FlowLayout());
 			JPanel textPanel = new JPanel(false);
 			final JTextField textfield = new JTextField(20);
+			textfield
+					.setToolTipText(" Genes/Proteins should be separated by comma ");
 			if (src)
 				textfield.setText("nanog, pou5f1, sall4");
 			else
@@ -936,7 +1046,7 @@ public class MyStrongestPathPlugin extends CytoscapePlugin {
 			panel.setLayout(new GridLayout(2, 1));
 			panel.add(textOuterPanel);
 			panel.add(browseOuterPanel);
-			
+
 			browseOuterPanel.setEnabled(false);
 			browseButton.setEnabled(false);
 			fileAddress.setEnabled(false);
@@ -1004,12 +1114,20 @@ public class MyStrongestPathPlugin extends CytoscapePlugin {
 		private JPanel createNodesInputDataPanel(final boolean src) {
 
 			JPanel panel = new JPanel(false);
-			String title = src ? " Select source genes: "
-					: " Select destination genes: ";
+			String title = src ? " Source genes/proteins: "
+					: " Target genes/proteins: ";
 			setBorder(panel, title);
-			final JRadioButton browseMode = new JRadioButton(" From file ");
+			// final JRadioButton browseMode = new JRadioButton(" From file ");
+			// final JRadioButton textMode = new
+			// JRadioButton(" Manual input (comma separated) ");
+
+			final JRadioButton browseMode = new JRadioButton("Read from file");
+			browseMode
+					.setToolTipText(" There should be one name per line in the input file ");
 			final JRadioButton textMode = new JRadioButton(
-					" Type (comma seperated) ");
+					"List of names                        ");
+			textMode.setToolTipText(" Genes/Proteins should be separated by comma ");
+
 			ButtonGroup group = new ButtonGroup();
 			group.add(browseMode);
 			group.add(textMode);
@@ -1042,7 +1160,7 @@ public class MyStrongestPathPlugin extends CytoscapePlugin {
 			panel.setLayout(new GridLayout(2, 1));
 			panel.add(textOuterPanel);
 			panel.add(browseOuterPanel);
-			
+
 			browseOuterPanel.setEnabled(false);
 			browseButton.setEnabled(false);
 			fileAddress.setEnabled(false);
@@ -1150,10 +1268,14 @@ public class MyStrongestPathPlugin extends CytoscapePlugin {
 			subNetworks = new HashMap<String, StrongestPath>();
 			// subNetworks = new HashMap<String, StrongestPath>();
 			for (String databaseName : databases) {
+				if (DATAspecies.equals(MOUSE)
+						&& excludeDatabases.contains(databaseName))
+					continue;
 				try {
 					subNetworks.put(databaseName, new StrongestPath(species,
 							nomen, "binary-" + DATAspecies + "-" + databaseName
 									+ "-PPI.txt"));
+					// JOptionPane.showMessageDialog(null, databaseName);
 					// subNetworks.put(databaseName, new StrongestPath(species,
 					// nomen, "binary-"
 					// + DATAspecies + "-" + databaseName + "-PPI.txt"));
@@ -1168,23 +1290,7 @@ public class MyStrongestPathPlugin extends CytoscapePlugin {
 			try {
 				expandAndShowNetwork(nomen, DATAdatabaseNames, numberOfNewNodes);
 			} catch (Exception e) {
-				String message = "";
-				if (step == 0)
-					message = "[Step 0] Error ";
-				else if (step == 1)
-					message = "[Step 1] Error ";
-				else if (step == 2)
-					message = "[Step 2] Error ";
-				else if (step == 3)
-					message = "[Step 3] Error ";
-				else if (step == 4)
-					message = "[Step 4] Error ";
-				else if (step == 5)
-					message = "[Step 5] Error ";
-				else if (step == 6)
-					message = "[Step 6] Error ";
-				else if (step == 7)
-					message = "[Step 7] Error ";
+				String message = "[doExpand: Step " + step + "] Error: ";
 				JOptionPane.showMessageDialog(null,
 						message + "(" + e.getMessage() + ")");
 				e.printStackTrace();
@@ -1225,23 +1331,8 @@ public class MyStrongestPathPlugin extends CytoscapePlugin {
 				showNetwork(species, nomen, sources, DATAdatabaseNames);
 
 			} catch (Exception e) {
-				String message = "";
-				if (step == 0)
-					message = "[Step 0] Error ";
-				else if (step == 1)
-					message = "[Step 1] Error ";
-				else if (step == 2)
-					message = "[Step 2] Error ";
-				else if (step == 3)
-					message = "[Step 3] Error ";
-				else if (step == 4)
-					message = "[Step 4] Error ";
-				else if (step == 5)
-					message = "[Step 5] Error ";
-				else if (step == 6)
-					message = "[Step 6] Error ";
-				else if (step == 7)
-					message = "[Step 7] Error ";
+				String message = "[doDisplayNetwork: Step " + step
+						+ "] Error: ";
 				JOptionPane.showMessageDialog(null,
 						message + "(" + e.getMessage() + ")");
 				e.printStackTrace();
@@ -1274,7 +1365,10 @@ public class MyStrongestPathPlugin extends CytoscapePlugin {
 				ArrayList<String> dATAdatabaseNames, int numberOfNewNodes)
 				throws Exception {
 
-			String databaseName = Cytoscape.getCurrentNetwork().getTitle();
+			CyNetwork network = adapter.getCyApplicationManager()
+					.getCurrentNetwork();
+			String databaseName = network.getRow(network).get(CyNetwork.NAME,
+					String.class);
 			StrongestPath strongestPath = subNetworks.get(databaseName);
 			step = 3;
 			Vector<Pair> edges = null;
@@ -1294,7 +1388,7 @@ public class MyStrongestPathPlugin extends CytoscapePlugin {
 		}
 
 		private void doKStrongestPath() {
-
+			// JOptionPane.showMessageDialog(null, "doKStrongestPath");
 			int species = 0;
 			if (DATAspecies.equals(HUMAN))
 				species = 0;
@@ -1326,32 +1420,19 @@ public class MyStrongestPathPlugin extends CytoscapePlugin {
 				step = 2;
 				String[] destinations = getGenes(DATAdstfilePath,
 						DATAdsttextField, dstFromFile);
-				for(int i = 0; i < sources.length; i++)
-					for(int j = 0; j < destinations.length; j++)
-					{
-						if(sources[i].equals(destinations[j]))
-							throw new Exception("'"+sources[i]+"' is in both sources and destination genes.");
+				for (int i = 0; i < sources.length; i++)
+					for (int j = 0; j < destinations.length; j++) {
+						if (sources[i].equals(destinations[j]))
+							throw new Exception(
+									"'"
+											+ sources[i]
+											+ "' is in both sources and destination genes.");
 					}
 				doStrongestPathOnEachDatabase(species, nomen, sources,
 						destinations, DATAdatabaseNames);
 			} catch (Exception e) {
-				String message = "";
-				if (step == 0)
-					message = "[Step 0] Error ";
-				else if (step == 1)
-					message = "[Step 1] Error ";
-				else if (step == 2)
-					message = "[Step 2] Error ";
-				else if (step == 3)
-					message = "[Step 3] Error ";
-				else if (step == 4)
-					message = "[Step 4] Error ";
-				else if (step == 5)
-					message = "[Step 5] Error ";
-				else if (step == 6)
-					message = "[Step 6] Error ";
-				else if (step == 7)
-					message = "[Step 7] Error ";
+				String message = "[doKStrongestPath: Step " + step
+						+ "] Error: ";
 				JOptionPane.showMessageDialog(null,
 						message + "(" + e.getMessage() + ")");
 				e.printStackTrace();
@@ -1462,7 +1543,7 @@ public class MyStrongestPathPlugin extends CytoscapePlugin {
 				step = 5;
 				Vector<Pair> edges = strongestPath
 						.getStrongestPathsGraph(DATAthreshold);
-				step = 7;
+				step = 6;
 				Vector<Vector<Pair>> vecTemp = new Vector<Vector<Pair>>();
 				vecTemp.add(edges);
 				HashSet<Integer> nodeset = new BiConnected(1).edgeToVertex(
@@ -1474,11 +1555,11 @@ public class MyStrongestPathPlugin extends CytoscapePlugin {
 				step = 7;
 				BFSInfos heights = getHeightsByBFS(edges, nodeset, sources,
 						destinations, nomen, strongestPath);
-				step = 7;
+				step = 8;
 				visualizeEdges(sources, destinations, edges, heights,
 						confidences, true, nomen, databaseName, strongestPath);
 
-				step = 8;
+				step = 9;
 			}
 
 		}
@@ -1571,16 +1652,15 @@ public class MyStrongestPathPlugin extends CytoscapePlugin {
 
 		private void visaulizeNetwork(Vector<Pair> edges,
 				HashMap<Integer, Integer> subGraph, Nomenclature nomen,
-				String title, boolean createNewNetwork)
+				String title, boolean createNetwork)
 				throws NumberFormatException, Exception {
 			String networkTitle = "Strongest path network view";
-			CyNetwork network;
-			if (createNewNetwork)
-				network = Cytoscape.createNetwork(title);
-			else
-				network = Cytoscape.getCurrentNetwork();
-
-			graphStyle.setNodeSizeLocked(false);
+			CyNetwork network = getNetwork(createNetwork, title);
+			CyNetworkView networkView = getNetworkView(createNetwork, network);
+			adapter.getCyNetworkManager().addNetwork(network);
+			adapter.getCyNetworkViewManager().addNetworkView(networkView);
+			// Old 2.x
+			// graphStyle.setNodeSizeLocked(false);
 
 			Integer max = Collections.max(subGraph.values());
 
@@ -1607,74 +1687,110 @@ public class MyStrongestPathPlugin extends CytoscapePlugin {
 				nodes[i] = allNodes.get(i).getKey();
 
 			}
-			String[] srcIds = new String[nodes.length];
+			String[] nodeIds = new String[nodes.length];
 			for (int i = 0; i < nodes.length; i++) {
-				srcIds[i] = nodes[i].toString();
+				nodeIds[i] = nodes[i].toString();
 			}
 
 			/* add nodes to network */
-			CyNode node;
-			for (String s : srcIds) {
-				node = Cytoscape.getCyNode(s, true);
-				network.addNode(node);
+			ArrayList<CyNode> newNodes = new ArrayList<CyNode>();
+			ArrayList<String> newStrings = new ArrayList<String>();
+			for (String s : nodeIds) {
+
+				// Added the nodes to the network with name equal to node ID
+				CyNode node;
+				node = getNodeWithValue(network, "nodeID", s);
+				if (node == null) {
+					node = network.addNode();
+					network.getRow(node).set("nodeID", s);
+					newNodes.add(node);
+					newStrings.add(s);
+					// adapter.getCyEventHelper().flushPayloadEvents();
+				}
+
+				/* Change color and shape of the node in the network */
+
 			}
+			adapter.getCyEventHelper().flushPayloadEvents();
 
-			/* change shape and color of the nodes */
-			for (String s : srcIds) {
+			for (int i = 0; i < allNodes.size(); i++) {
+				int g = (255 / (max)) * (max - allNodes.get(i).getValue());
 
-				String red = Integer.toHexString((256 / (max))
-						* (max - subGraph.get(Integer.parseInt(s))));
-				if (red.length() == 1)
-					red = "0" + red;
-
-				nodeStyleWithShape(s, nomen.Convert(
-						nomen.IDtoName(Integer.parseInt(s)),
-						"Official_Gene_Symbol"),
-						NodeShape.ELLIPSE.getShapeName());
-				graphStyle.addProperty(s, VisualPropertyType.NODE_FILL_COLOR,
-						"#ff" + red + red);
+				nodeStyleWithShape(
+						getNodeWithValue(network, "nodeID", allNodes.get(i)
+								.getKey().toString()), nomen.Convert(
+								nomen.IDtoName(allNodes.get(i).getValue()),
+								"Official_Gene_Symbol"),
+						NodeShapeVisualProperty.ELLIPSE, new Color(255, g, g));
 			}
 
 			/* add edges to the network */
 			CyEdge edge;
-			CyAttributes cyNodeAttrs;
-			CyAttributes cyEdgeAttrs;
+
+			/*
+			 * OLD 2.x CyAttributes cyNodeAttrs; CyAttributes cyEdgeAttrs;
+			 */
+			// New 3.x
 			CyNode node1, node2;
 
 			for (Pair p : edges) {
+				/*
+				 * OLD 2.x node1 =
+				 * Cytoscape.getCyNode(nomen.NametoID(p.left).toString(), true);
+				 * node2 =
+				 * Cytoscape.getCyNode(nomen.NametoID(p.right).toString(),
+				 * true);
+				 */
+				// New 3.x
+				node1 = getNodeWithValue(network, "nodeID",
+						nomen.NametoID(p.left).toString());
+				node2 = getNodeWithValue(network, "nodeID",
+						nomen.NametoID(p.right).toString());
 
-				node1 = Cytoscape.getCyNode(nomen.NametoID(p.left).toString(),
-						true);
-				node2 = Cytoscape.getCyNode(nomen.NametoID(p.right).toString(),
-						true);
+				/*
+				 * Old 2.x cyNodeAttrs = Cytoscape.getNodeAttributes();
+				 * 
+				 * edge = Cytoscape.getCyEdge(node1, node2,
+				 * Semantics.INTERACTION, "pp", true); cyEdgeAttrs =
+				 * Cytoscape.getEdgeAttributes();
+				 * cyEdgeAttrs.setAttribute(edge.getSUID(), "Database",
+				 * p.dataBaseName); if (!network.containsEdge(edge))
+				 * network.addEdge(edge);
+				 */
 
-				/*** here ***/
-				cyNodeAttrs = Cytoscape.getNodeAttributes();
-
-				edge = Cytoscape.getCyEdge(node1, node2, Semantics.INTERACTION,
-						"pp", true);
-				cyEdgeAttrs = Cytoscape.getEdgeAttributes();
-				cyEdgeAttrs.setAttribute(edge.getIdentifier(), "Database",
-						p.dataBaseName);
-				if (!network.containsEdge(edge))
-					network.addEdge(edge);
+				// New
+				if (!network.containsEdge(node1, node2)) {
+					edge = network.addEdge(node1, node2, true);
+					network.getRow(edge).set("Database", p.dataBaseName);
+				}
 
 			}
 
 			/*************************************/
 
 			// Create the visual style
-			buildNetwork(network, networkTitle + title, false);
-			applyTableLayout(srcIds, nomen);
+			buildNetwork(network, networkView, networkTitle + title, false);
+			applyTableLayout(network, nodeIds, nomen);
 
 		}
 
 		private void visaulizeNetwork(Vector<Pair> edges, String[] nodes,
 				Nomenclature nomen, String title) throws Exception {
 			// String networkTitle = "Strongest path network view: ";
-			CyNetwork network = Cytoscape.createNetwork(title);
-
-			graphStyle.setNodeSizeLocked(false);
+			/*
+			 * Old 2.x CyNetwork network = Cytoscape.createNetwork(title);
+			 */
+			// New 3.x
+			CyNetwork network = getNetwork(true, title);
+			CyNetworkView networkView = getNetworkView(true, network);
+			adapter.getCyNetworkManager().addNetwork(network);
+			adapter.getCyNetworkViewManager().addNetworkView(networkView);
+			// CyNetwork network =
+			// adapter.getCyNetworkFactory().createNetwork();
+			// network.getRow(network).set(CyNetwork.NAME, title);
+			// addNodeIDColumn(network);
+			// Old 2.x
+			// graphStyle.setNodeSizeLocked(false);
 
 			/* find nodes ids' */
 			String[] srcIds = new String[nodes.length];
@@ -1688,52 +1804,79 @@ public class MyStrongestPathPlugin extends CytoscapePlugin {
 			}
 
 			/* add nodes to network */
-			CyNode node;
-			for (String s : srcIds) {
-				node = Cytoscape.getCyNode(s, true);
-				network.addNode(node);
-			}
 
-			/* change shape and color of the nodes */
+			ArrayList<CyNode> newNodes = new ArrayList<CyNode>();
+			ArrayList<String> newStrings = new ArrayList<String>();
 			for (String s : srcIds) {
-				/*******/
+				/*
+				 * Old 2.x node = Cytoscape.getCyNode(s, true);
+				 * network.addNode(node);
+				 */
+				// New 3.x
+				CyNode node;
+				node = network.addNode();
+				network.getRow(node).set("nodeID", s);
+				/* change shape and color of the nodes */
+				step = 40;
+				newStrings.add(s);
+				newNodes.add(node);
+			}
+			adapter.getCyEventHelper().flushPayloadEvents();
+			String s;
+
+			for (int i = 0; i < newNodes.size(); i++) {
+				s = newStrings.get(i);
 				if (!s.equals("source") && !s.equals("destination")) {
-					nodeStyleWithShape(s, nomen.Convert(
+					nodeStyleWithShape(newNodes.get(i), nomen.Convert(
 							nomen.IDtoName(Integer.parseInt(s)),
 							"Official_Gene_Symbol"),
-							NodeShape.ELLIPSE.getShapeName());
-					graphStyle.addProperty(s,
-							VisualPropertyType.NODE_FILL_COLOR, "#FFFFFF");
+							NodeShapeVisualProperty.ELLIPSE, null);
 				}
-				/******/
+
 			}
 
 			/* add edges to the network */
 			CyEdge edge;
-			CyAttributes cyNodeAttrs;
-			CyAttributes cyEdgeAttrs;
+			/*
+			 * Old 2.x CyAttributes cyNodeAttrs; CyAttributes cyEdgeAttrs;
+			 */
 			CyNode node1, node2;
 
 			for (Pair p : edges) {
-				node1 = Cytoscape.getCyNode(nomen.NametoID(p.left).toString(),
-						true);
-				node2 = Cytoscape.getCyNode(nomen.NametoID(p.right).toString(),
-						true);
-				cyNodeAttrs = Cytoscape.getNodeAttributes();
-				edge = Cytoscape.getCyEdge(node1, node2, Semantics.INTERACTION,
-						"pp", true);
-				cyEdgeAttrs = Cytoscape.getEdgeAttributes();
-				cyEdgeAttrs.setAttribute(edge.getIdentifier(), "Database",
-						p.dataBaseName);
-				if (!network.containsEdge(edge))
-					network.addEdge(edge);
+				/*
+				 * Old 2.x node1 =
+				 * Cytoscape.getCyNode(nomen.NametoID(p.left).toString(), true);
+				 * node2 =
+				 * Cytoscape.getCyNode(nomen.NametoID(p.right).toString(),
+				 * true);
+				 */
+				// New 3.x
+				node1 = getNodeWithValue(network, "nodeID",
+						nomen.NametoID(p.left).toString());
+				node2 = getNodeWithValue(network, "nodeID",
+						nomen.NametoID(p.right).toString());
+
+				/*
+				 * Old 2.x cyNodeAttrs = Cytoscape.getNodeAttributes(); edge =
+				 * Cytoscape.getCyEdge(node1, node2, Semantics.INTERACTION,
+				 * "pp", true); cyEdgeAttrs = Cytoscape.getEdgeAttributes();
+				 * cyEdgeAttrs.setAttribute(edge.getSUID(), "Database",
+				 * p.dataBaseName); if (!network.containsEdge(edge))
+				 * network.addEdge(edge);
+				 */
+				// New 3.x
+				if (!network.containsEdge(node1, node2)) {
+					edge = network.addEdge(node1, node2, true);
+					network.getRow(edge).set("Database", p.dataBaseName);
+				}
 
 			}
 
 			/*************************************/
 
 			// Create the visual style
-			buildNetwork(network, title, false);
+			buildNetwork(network, networkView, title, false);
+			applyTableLayout(network, srcIds, nomen);
 
 		}
 
@@ -1745,15 +1888,15 @@ public class MyStrongestPathPlugin extends CytoscapePlugin {
 
 			String networkTitle = "Strongest path network: ";
 
-			CyNetwork network;
-			if (createNetwork)
-				network = Cytoscape.createNetwork(networkTitle + title);
-			else
-				network = Cytoscape.getCurrentNetwork();
+			CyNetwork network = getNetwork(createNetwork, title);
+			CyNetworkView networkView = getNetworkView(createNetwork, network);
+
+			adapter.getCyNetworkManager().addNetwork(network);
+			adapter.getCyNetworkViewManager().addNetworkView(networkView);
 			/*******/
 			/* change style of nodes */
 
-			graphStyle.setNodeSizeLocked(false);
+			// graphStyle.setNodeSizeLocked(false);
 
 			// set some visual property for two nodes
 			Integer tempId;
@@ -1776,135 +1919,271 @@ public class MyStrongestPathPlugin extends CytoscapePlugin {
 
 			/**********/
 
-			CyNode node, preNode;
-
 			if (createNetwork) {
+				step = 22;
+				ArrayList<CyNode> newNodes = new ArrayList<CyNode>();
+				ArrayList<String> newStrings = new ArrayList<String>();
 				for (String s : srcIds2) {
-					node = Cytoscape.getCyNode(s, true);
-					network.addNode(node);
+					CyNode node;
+					/*
+					 * Old 2.x node = Cytoscape.getCyNode(s, true);
+					 * network.addNode(node);
+					 */
+					// New 3.x
+					node = network.addNode();
+					network.getRow(node).set("nodeID", s);
+					newNodes.add(node);
+					newStrings.add(s);
+
+				}
+				adapter.getCyEventHelper().flushPayloadEvents();
+				String s;
+				for (int i = 0; i < newNodes.size(); i++) {
+					s = newStrings.get(i);
+					if (!s.equals("source") && !s.equals("destination")) {
+						nodeStyleWithShape(newNodes.get(i), nomen.Convert(
+								nomen.IDtoName(Integer.parseInt(s)),
+								"Official_Gene_Symbol"),
+								NodeShapeVisualProperty.ELLIPSE, null);
+					}
+
 				}
 
-				for (String s : dstIds2) {
-					node = Cytoscape.getCyNode(s, true);
-					network.addNode(node);
+				newNodes.clear();
+				newStrings.clear();
+				for (String s1 : dstIds2) {
+					CyNode node;
+					/*
+					 * Old 2.x node = Cytoscape.getCyNode(s, true);
+					 * network.addNode(node);
+					 */
+					// New 3.x
+					node = network.addNode();
+					network.getRow(node).set("nodeID", s1);
+					newNodes.add(node);
+					newStrings.add(s1);
 				}
-			}
+				adapter.getCyEventHelper().flushPayloadEvents();
+				String s1;
+				for (int i = 0; i < newNodes.size(); i++) {
+					s1 = newStrings.get(i);
+					if (!s1.equals("source") && !s1.equals("destination")) {
+						nodeStyleWithShape(newNodes.get(i), nomen.Convert(
+								nomen.IDtoName(Integer.parseInt(s1)),
+								"Official_Gene_Symbol"),
+								NodeShapeVisualProperty.ELLIPSE, null);
+					}
 
-			String ensemble, entrez, off, label;
-			for (String s : srcIds2) {
-				if (!s.equals("source") && !s.equals("destination")) {
-					nodeStyleWithShape(s, nomen.Convert(
-							nomen.IDtoName(Integer.parseInt(s)),
-							"Official_Gene_Symbol"),
-							NodeShape.ELLIPSE.getShapeName());
-					graphStyle.addProperty(s,
-							VisualPropertyType.NODE_FILL_COLOR, "#FFFFFF");
-				}
-			}
-
-			for (String s : dstIds2) {
-				if (!s.equals("source") && !s.equals("destination")) {
-					nodeStyleWithShape(s, nomen.Convert(
-							nomen.IDtoName(Integer.parseInt(s)),
-							"Official_Gene_Symbol"),
-							NodeShape.ELLIPSE.getShapeName());
-					graphStyle.addProperty(s,
-							VisualPropertyType.NODE_FILL_COLOR, "#FF0000");
 				}
 			}
 
 			CyEdge edge;
-			CyAttributes cyNodeAttrs;
-			CyAttributes cyEdgeAttrs;
-			CyNode node1, node2;
+			/*
+			 * Old 2.x CyAttributes cyNodeAttrs; CyAttributes cyEdgeAttrs;
+			 */
+
 			int src = 0;
 			int dst = strongestPath.destGraph.proteinsCount;
 
 			/********** DRAW EDGES ***************/
+			step = 25;
+			int nodeID1, nodeID2;
+			ArrayList<CyNode> newNodes = new ArrayList<CyNode>();
+			ArrayList<Integer> newNodesIDs = new ArrayList<Integer>();
 			for (Pair p : edges) {
 				if (p.l == src || p.l == dst || p.r == src || p.r == dst)
 					continue;
-				node1 = Cytoscape.getCyNode(nomen.NametoID(p.left).toString(),
-						true);
-				node2 = Cytoscape.getCyNode(nomen.NametoID(p.right).toString(),
-						true);
+				/*
+				 * Old 2.x node1 =
+				 * Cytoscape.getCyNode(nomen.NametoID(p.left).toString(), true);
+				 * node2 =
+				 * Cytoscape.getCyNode(nomen.NametoID(p.right).toString(),
+				 * true);
+				 */
+				CyNode node1, node2;
+				nodeID1 = nomen.NametoID(p.left);
+				nodeID2 = nomen.NametoID(p.right);
+				step = 26;
+				Integer.toString(nodeID1);
 
-				if (!network.containsNode(node1)) {
-					network.addNode(node1);
-					nodeStyle3(node1, nomen);
+				node1 = getNodeWithValue(network, "nodeID",
+						Integer.toString(nodeID1));
+				node2 = getNodeWithValue(network, "nodeID",
+						Integer.toString(nodeID2));
+
+				// if (!network.containsNode(node1)) {
+				if (node1 == null) {
+					/*
+					 * Old 2.x network.addNode(node1);
+					 */
+					// TODO add node1 to the network
+					step = 27;
+					node1 = network.addNode();
+					network.getRow(node1).set("nodeID",
+							Integer.toString(nodeID1));
+
+					step = 271;
+					newNodes.add(node1);
+					newNodesIDs.add(nodeID1);
+
+					/*
+					 * adapter.getCyEventHelper().flushPayloadEvents(); step =
+					 * 272; nodeStyle3(node1, nomen, nodeID1); step = 273;
+					 */
 				}
-				if (!network.containsNode(node2)) {
-					network.addNode(node2);
-					nodeStyle3(node2, nomen);
+				// if (!network.containsNode(node2)) {
+				if (node2 == null) {
+					/*
+					 * Old 2.x network.addNode(node2);
+					 */
+
+					// TODO add node2 to the network
+					node2 = network.addNode();
+					network.getRow(node2).set("nodeID",
+							Integer.toString(nodeID2));
+					newNodes.add(node2);
+					newNodesIDs.add(nodeID2);
+					// adapter.getCyEventHelper().flushPayloadEvents();
+					// step = 28;
+					// nodeStyle3(node2, nomen, nodeID2);
 				}
 
 				/*** here ***/
 
-				cyNodeAttrs = Cytoscape.getNodeAttributes();
-				cyNodeAttrs.setAttribute(node1.getIdentifier(),
-						"PathConfidence",
-						1.0 / Math.pow(2, confidences.get(p.left)));
-				cyNodeAttrs.setAttribute(node2.getIdentifier(),
-						"PathConfidence",
-						1.0 / Math.pow(2, confidences.get(p.right)));
+				/*
+				 * Old 2.x cyNodeAttrs = Cytoscape.getNodeAttributes();
+				 * cyNodeAttrs.setAttribute(node1.getSUID(), "PathConfidence",
+				 * 1.0 / Math.pow(2, confidences.get(p.left)));
+				 * cyNodeAttrs.setAttribute(node2.getSUID(), "PathConfidence",
+				 * 1.0 / Math.pow(2, confidences.get(p.right)));
+				 */
+				// New 3.x
+				step = 29;
+				network.getRow(node1).set(
+						"Path Confidence",
+						Double.toString(1.0 / Math.pow(2,
+								confidences.get(p.left))));
+				network.getRow(node2).set(
+						"Path Confidence",
+						Double.toString(1.0 / Math.pow(2,
+								confidences.get(p.right))));
 
-				edge = Cytoscape.getCyEdge(node1, node2, Semantics.INTERACTION,
-						"pp", true);
-				cyEdgeAttrs = Cytoscape.getEdgeAttributes();
-				if (title.equals(""))
-					cyEdgeAttrs.setAttribute(edge.getIdentifier(), "Database",
-							p.dataBaseName);
-				if (!network.containsEdge(edge))
-					network.addEdge(edge);
+				/*
+				 * Old 2.x edge = Cytoscape.getCyEdge(node1, node2,
+				 * Semantics.INTERACTION, "pp", true); cyEdgeAttrs =
+				 * Cytoscape.getEdgeAttributes(); if (title.equals(""))
+				 * cyEdgeAttrs.setAttribute(edge.getSUID(), "Database",
+				 * p.dataBaseName); if (!network.containsEdge(edge))
+				 * network.addEdge(edge);
+				 */
+				// New 3.x
+				if (!network.containsEdge(node1, node2)) {
+					edge = network.addEdge(node1, node2, true);
+					network.getRow(edge).set("Database", p.dataBaseName);
+				}
 
 			}
-
+			adapter.getCyEventHelper().flushPayloadEvents();
+			for (int i = 0; i < newNodes.size(); i++) {
+				nodeStyle3(newNodes.get(i), nomen, newNodesIDs.get(i));
+			}
 			/*************************************/
 			// Create the visual style
-			buildNetwork(network, networkTitle + title, true);
+			buildNetwork(network, networkView, networkTitle + title, true);
 
-			applyColor(heights, nomen);
-			applyBFSLayout(heights, nomen);
+			applyColor(network, networkView, heights, nomen);
+			applyBFSLayout(network, networkView, heights, nomen);
+			// JOptionPane.showMessageDialog(null, "BFS");
 
 		}
 
-		private void applyColor(BFSInfos bfsInfos, Nomenclature nomen) {
+		private CyNetworkView getNetworkView(boolean createNetwork,
+				CyNetwork network) {
+			CyNetworkView networkView;
+			if (createNetwork)
+				networkView = adapter.getCyNetworkViewFactory()
+						.createNetworkView(network);
+			else
+				networkView = adapter.getCyApplicationManager()
+						.getCurrentNetworkView();
+			return networkView;
+		}
+
+		private CyNetwork getNetwork(boolean createNetwork, String title) {
+			CyNetwork network;
+			if (createNetwork) {
+				network = adapter.getCyNetworkFactory().createNetwork();
+				network.getRow(network).set(CyNetwork.NAME, title);
+
+			} else
+				network = adapter.getCyApplicationManager().getCurrentNetwork();
+			addNodeIDColumn(network);
+			return network;
+		}
+
+		private void applyColor(CyNetwork network, CyNetworkView networkView,
+				BFSInfos bfsInfos, Nomenclature nomen) {
 			HashMap<Integer, Integer> heights = bfsInfos.heights;
 			int max = 0;
 			for (Entry<Integer, Integer> e : heights.entrySet())
 				if (e.getValue() > max)
 					max = e.getValue();
 
+			CyNode node;
+			step = 26;
 			for (Entry<Integer, Integer> e : heights.entrySet()) {
-				CyNode node1 = Cytoscape.getCyNode(e.getKey().toString(), true);
-				String red = Integer.toHexString((256 / max)
+				/*
+				 * Old 2.x CyNode node1 =
+				 * Cytoscape.getCyNode(e.getKey().toString(), true);
+				 */
+				node = getNodeWithValue(network, "nodeID", e.getKey()
+						.toString());
+				String red = Integer.toHexString((255 / max)
 						* (max - e.getValue()));
 				if (red.length() == 1)
 					red = "0" + red;
-
-				graphStyle.addProperty(node1.getIdentifier(),
-						VisualPropertyType.NODE_FILL_COLOR, "#ff" + red + red);
+				networkView.getNodeView(node).setVisualProperty(
+						BasicVisualLexicon.NODE_FILL_COLOR,
+						Color.decode("#ff" + red + red));
 			}
-			graphStyle.buildStyle();
+			// Old 2.x
+			// graphStyle.buildStyle();
 		}
 
-		private void applyBFSLayout(BFSInfos bfsInfos, Nomenclature nomen) {
+		private void applyBFSLayout(CyNetwork network,
+				CyNetworkView networkView, BFSInfos bfsInfos, Nomenclature nomen) {
 			CyNode node;
 			HashMap<Integer, Integer> heights = bfsInfos.heights;
 			HashMap<Integer, Integer> visitTimes = bfsInfos.visitTimes;
 
 			for (Integer nodeID : heights.keySet()) {
-				node = Cytoscape.getCyNode(nodeID.toString(), false);
-				Cytoscape.getCurrentNetworkView().getNodeView(node)
-						.setYPosition(heights.get(nodeID) * 80);
-				Cytoscape.getCurrentNetworkView().getNodeView(node)
-						.setXPosition(visitTimes.get(nodeID) * 80);
-
+				/*
+				 * Old 2.x node = Cytoscape.getCyNode(nodeID.toString(), false);
+				 * Cytoscape.getCurrentNetworkView().getNodeView(node)
+				 * .setYPosition(heights.get(nodeID) * 80);
+				 * Cytoscape.getCurrentNetworkView().getNodeView(node)
+				 * .setXPosition(visitTimes.get(nodeID) * 80);
+				 */
+				// JOptionPane.showMessageDialog(null, "x: "+
+				// heights.get(nodeID)+ ", y: "+visitTimes.get(nodeID));
+				node = getNodeWithValue(network, "nodeID", nodeID.toString());
+				networkView.getNodeView(node).setVisualProperty(
+						BasicVisualLexicon.NODE_Y_LOCATION,
+						(double) heights.get(nodeID) * 80);
+				networkView.getNodeView(node).setVisualProperty(
+						BasicVisualLexicon.NODE_X_LOCATION,
+						(double) visitTimes.get(nodeID) * 80);
 			}
-			Cytoscape.getCurrentNetworkView().redrawGraph(false, true);
+			// Old 2.x
+			// Cytoscape.getCurrentNetworkView().redrawGraph(false, true);
+			// networkView.updateView();
+			networkView.updateView();
+			adapter.getCyEventHelper().flushPayloadEvents();
+
 		}
 
-		private void applyTableLayout(String[] srcIds, Nomenclature nomen) {
+		private void applyTableLayout(CyNetwork network, String[] srcIds,
+				Nomenclature nomen) {
 			CyNode node;
 			int r = 0, c = 0;
 			int maxRow = (int) Math.ceil(Math.sqrt(srcIds.length));
@@ -1915,29 +2194,67 @@ public class MyStrongestPathPlugin extends CytoscapePlugin {
 					c = 0;
 					r++;
 				}
-				node = Cytoscape.getCyNode(nodeID, false);
-				Cytoscape.getCurrentNetworkView().getNodeView(node)
-						.setYPosition(r * 80);
-				Cytoscape.getCurrentNetworkView().getNodeView(node)
-						.setXPosition(c * 80);
+				/*
+				 * Old 2.x node = Cytoscape.getCyNode(nodeID, false);
+				 * Cytoscape.getCurrentNetworkView().getNodeView(node)
+				 * .setYPosition(r * 80);
+				 * Cytoscape.getCurrentNetworkView().getNodeView(node)
+				 * .setXPosition(c * 80);
+				 */
+				/* New 3.x */
+				node = getNodeWithValue(network, "nodeID", nodeID.toString());
+				manager.getCurrentNetworkView()
+						.getNodeView(node)
+						.setVisualProperty(BasicVisualLexicon.NODE_Y_LOCATION,
+								(double) r * 80);
+				manager.getCurrentNetworkView()
+						.getNodeView(node)
+						.setVisualProperty(BasicVisualLexicon.NODE_X_LOCATION,
+								(double) c * 80);
+
 				c++;
 			}
-			Cytoscape.getCurrentNetworkView().redrawGraph(false, true);
+			// Old 2.x
+			// Cytoscape.getCurrentNetworkView().redrawGraph(false, true);
+			manager.getCurrentNetworkView().updateView();
+			adapter.getCyEventHelper().flushPayloadEvents();
 		}
 
-		private void nodeStyleWithShape(String nodeIdentifier, String label,
-				String shape) {
+		// private void nodeStyleWithShape(String nodeIdentifier, String label,
+		private void nodeStyleWithShape(CyNode node, String label,
+				NodeShape shape, Color color) {
+			// New 3.x
+			if (color == null) {
+				color = new Color(0, 250, 250);
+			}
 
-			graphStyle.addProperty(nodeIdentifier,
-					VisualPropertyType.NODE_LABEL, label);
-			graphStyle.addProperty(nodeIdentifier,
-					VisualPropertyType.NODE_WIDTH, "50");
-			graphStyle.addProperty(nodeIdentifier,
-					VisualPropertyType.NODE_HEIGHT, "50");
-			graphStyle.addProperty(nodeIdentifier,
-					VisualPropertyType.NODE_FILL_COLOR, "#00FAFA");
-			graphStyle.addProperty(nodeIdentifier,
-					VisualPropertyType.NODE_SHAPE, shape);
+			step = 41;
+			manager.getCurrentNetworkView().getNodeView(node)
+					.setVisualProperty(BasicVisualLexicon.NODE_LABEL, label);
+			step = 42;
+			manager.getCurrentNetworkView().getNodeView(node)
+					.setVisualProperty(BasicVisualLexicon.NODE_WIDTH, 50.0);
+			manager.getCurrentNetworkView().getNodeView(node)
+					.setVisualProperty(BasicVisualLexicon.NODE_HEIGHT, 50.0);
+			manager.getCurrentNetworkView()
+					.getNodeView(node)
+					.setVisualProperty(BasicVisualLexicon.NODE_FILL_COLOR,
+							color);
+			manager.getCurrentNetworkView().getNodeView(node)
+					.setVisualProperty(BasicVisualLexicon.NODE_SHAPE, shape);
+
+			/*
+			 * Old 2.x graphStyle.addProperty(nodeIdentifier,
+			 * VisualPropertyType.NODE_LABEL, label);
+			 * graphStyle.addProperty(nodeIdentifier,
+			 * VisualPropertyType.NODE_WIDTH, "50");
+			 * graphStyle.addProperty(nodeIdentifier,
+			 * VisualPropertyType.NODE_HEIGHT, "50");
+			 * graphStyle.addProperty(nodeIdentifier,
+			 * VisualPropertyType.NODE_FILL_COLOR, "#00FAFA");
+			 * graphStyle.addProperty(nodeIdentifier,
+			 * VisualPropertyType.NODE_SHAPE, shape);
+			 */
 		}
 
 		private String[] getGenes(String dATAdstfilePath,
@@ -1975,8 +2292,15 @@ public class MyStrongestPathPlugin extends CytoscapePlugin {
 
 		public void showFrame() {
 			frame = new JFrame();
-			frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+			// frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
 			// frame.setResizable(false);
+			/*
+			 * frame.addWindowListener(new WindowAdapter() {
+			 * 
+			 * @Override public void windowClosing(WindowEvent e) {
+			 * super.windowClosing(e); doFinalize();
+			 * JOptionPane.showMessageDialog(null, "closed"); } });
+			 */
 			frame.setLocation(100, 50);
 			// Add content to the window.
 			frame.add(topPanel, BorderLayout.CENTER);
@@ -1986,50 +2310,92 @@ public class MyStrongestPathPlugin extends CytoscapePlugin {
 			frame.setVisible(true);
 		}
 
+		private void nodeStyle3(CyNode node, Nomenclature nomen, int nodeId)
+				throws NumberFormatException, Exception {
+
+			// int suid = node.getSUID().intValue();
+
+			String officialSymbol = nomen.Convert(nomen.IDtoName(nodeId),
+					"Official_Gene_Symbol");
+
+			// graphStyle.addProperty(node1.getSUID(),
+			// VisualPropertyType.NODE_LABEL, officialSymbol);
+			// graphStyle.addProperty(node1.getSUID(),
+			// VisualPropertyType.NODE_WIDTH, "50");
+			// graphStyle.addProperty(node1.getSUID(),
+			// VisualPropertyType.NODE_HEIGHT, "50");
+			// graphStyle.addProperty(node1.getSUID(),
+			// VisualPropertyType.NODE_FILL_COLOR, "#00FAFA");
+			// graphStyle
+			// .addProperty(node1.getSUID(),
+			// VisualPropertyType.NODE_SHAPE,
+			// NodeShape.ELLIPSE.getShapeName());
+
+			Color color = new Color(0, 250, 250);
+			step = 281;
+			if (manager.getCurrentNetworkView() == null)
+				JOptionPane.showMessageDialog(null, "network view is null");
+			if (manager.getCurrentNetworkView().getNodeView(node) == null)
+				JOptionPane.showMessageDialog(null, officialSymbol
+						+ " node view is null " + node.toString());
+			manager.getCurrentNetworkView()
+					.getNodeView(node)
+					.setVisualProperty(BasicVisualLexicon.NODE_LABEL,
+							officialSymbol);
+			step = 282;
+			manager.getCurrentNetworkView().getNodeView(node)
+					.setVisualProperty(BasicVisualLexicon.NODE_WIDTH, 50.0);
+			step = 283;
+			manager.getCurrentNetworkView().getNodeView(node)
+					.setVisualProperty(BasicVisualLexicon.NODE_HEIGHT, 50.0);
+			step = 284;
+			manager.getCurrentNetworkView()
+					.getNodeView(node)
+					.setVisualProperty(BasicVisualLexicon.NODE_FILL_COLOR,
+							color);
+			step = 285;
+			manager.getCurrentNetworkView()
+					.getNodeView(node)
+					.setVisualProperty(BasicVisualLexicon.NODE_SHAPE,
+							NodeShapeVisualProperty.ELLIPSE);
+		}
+
 	}
 
-	private void buildNetwork(CyNetwork network, String networkTitle,
-			boolean disposeFrame) {
-		graphStyle.buildStyle();
+	/*
+	 * Old 2.x private void buildNetwork(CyNetwork network, String networkTitle,
+	 * boolean disposeFrame) { graphStyle.buildStyle();
+	 * 
+	 * 
+	 * 
+	 * CyNetworkView view = Cytoscape.createNetworkView(network, networkTitle);
+	 * 
+	 * networkViewIdentifier = view.getSUID();
+	 * view.applyLayout((CyLayoutAlgorithm) CyLayouts.getAllLayouts()
+	 * .toArray()[0]); try { Cytoscape.getDesktop().getNetworkViewManager()
+	 * .getInternalFrame(view).setMaximum(true); } catch
+	 * (IllegalArgumentException e) { e.printStackTrace(); } catch
+	 * (PropertyVetoException e) { e.printStackTrace(); } // if (disposeFrame)
+	 * // frame.dispose();
+	 * 
+	 * }
+	 */
+	private void buildNetwork(CyNetwork network, CyNetworkView networkView,
+			String networkTitle, boolean disposeFrame) {
 
-		/********/
+		// adapter.getCyNetworkManager().addNetwork(network);
+		// adapter.getCyNetworkViewManager().addNetworkView(networkView);
 
-		CyNetworkView view = Cytoscape.createNetworkView(network, networkTitle);
-
-		networkViewIdentifier = view.getIdentifier();
-		view.applyLayout((CyLayoutAlgorithm) CyLayouts.getAllLayouts()
-				.toArray()[0]);
-		try {
-			Cytoscape.getDesktop().getNetworkViewManager()
-					.getInternalFrame(view).setMaximum(true);
-		} catch (IllegalArgumentException e) {
-			e.printStackTrace();
-		} catch (PropertyVetoException e) {
-			e.printStackTrace();
-		}
+		/*
+		 * //TODO Uncomment next few lines CyLayoutAlgorithm layoutAlgorithm =
+		 * adapter .getCyLayoutAlgorithmManager().getAllLayouts().iterator()
+		 * .next(); TaskIterator itr =
+		 * layoutAlgorithm.createTaskIterator(networkView,
+		 * layoutAlgorithm.createLayoutContext(),
+		 * CyLayoutAlgorithm.ALL_NODE_VIEWS, null);
+		 * adapter.getTaskManager().execute(itr);
+		 */
 		// if (disposeFrame)
 		// frame.dispose();
-
 	}
-
-	private void nodeStyle3(CyNode node1, Nomenclature nomen)
-			throws NumberFormatException, Exception {
-
-		String officialSymbol = nomen.Convert(
-				nomen.IDtoName(Integer.parseInt(node1.getIdentifier())),
-				"Official_Gene_Symbol");
-		graphStyle.addProperty(node1.getIdentifier(),
-				VisualPropertyType.NODE_LABEL, officialSymbol);
-		graphStyle.addProperty(node1.getIdentifier(),
-				VisualPropertyType.NODE_WIDTH, "50");
-		graphStyle.addProperty(node1.getIdentifier(),
-				VisualPropertyType.NODE_HEIGHT, "50");
-		graphStyle.addProperty(node1.getIdentifier(),
-				VisualPropertyType.NODE_FILL_COLOR, "#00FAFA");
-		graphStyle
-				.addProperty(node1.getIdentifier(),
-						VisualPropertyType.NODE_SHAPE,
-						NodeShape.ELLIPSE.getShapeName());
-	}
-
 }

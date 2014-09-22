@@ -35,12 +35,10 @@ public class ComponentTitledBorder implements Border, MouseListener, MouseMotion
         container.addMouseMotionListener(this);
     }
  
-    @Override
     public boolean isBorderOpaque() {
         return true;
     }
  
-    @Override
     public void paintBorder(Component c, Graphics g, int x, int y, int width, int height) {
         Insets borderInsets = border.getBorderInsets(c);
         Insets insets = getBorderInsets(c);
@@ -51,7 +49,6 @@ public class ComponentTitledBorder implements Border, MouseListener, MouseMotion
         SwingUtilities.paintComponent(g, comp, (Container) c, rect);
     }
  
-    @Override
     public Insets getBorderInsets(Component c) {
         Dimension size = comp.getPreferredSize();
         Insets insets = border.getBorderInsets(c);
@@ -78,16 +75,13 @@ public class ComponentTitledBorder implements Border, MouseListener, MouseMotion
         }
     }
  
-    @Override
     public void mouseClicked(MouseEvent me) {
         dispatchEvent(me);
     }
  
-    @Override
     public void mouseEntered(MouseEvent me) {
     }
  
-    @Override
     public void mouseExited(MouseEvent me) {
         if (mouseEntered) {
             mouseEntered = false;
@@ -95,21 +89,17 @@ public class ComponentTitledBorder implements Border, MouseListener, MouseMotion
         }
     }
  
-    @Override
     public void mousePressed(MouseEvent me) {
         dispatchEvent(me);
     }
  
-    @Override
     public void mouseReleased(MouseEvent me) {
         dispatchEvent(me);
     }
  
-    @Override
     public void mouseDragged(MouseEvent e) {
     }
  
-    @Override
     public void mouseMoved(MouseEvent me) {
         if (rect == null) {
             return;
