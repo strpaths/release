@@ -239,9 +239,9 @@ public class MyStrongestPathPlugin extends AbstractCySwingApp {
 			if (nodeTable.getColumn("nodeID") == null) {
 				nodeTable.createColumn("nodeID", String.class, false);
 			}
-			if (nodeTable.getColumn("Path Confidence") == null) {
+			/*if (nodeTable.getColumn("Path Confidence") == null) {
 				nodeTable.createColumn("Path Confidence", String.class, false);
-			}
+			}*/
 			if (edgeTable.getColumn("Database") == null) {
 				edgeTable.createColumn("Database", String.class, false);
 			}
@@ -990,8 +990,6 @@ public class MyStrongestPathPlugin extends AbstractCySwingApp {
 			return panel;
 		}
 
-		// TODO Baraye StrongesthPath bayad az tabeye createNodesInputDataPanel2
-		// estefade beshe!!!!
 		private JPanel createNodesInputDataPanelNew(final boolean src,
 				final boolean expand) {
 
@@ -1000,10 +998,7 @@ public class MyStrongestPathPlugin extends AbstractCySwingApp {
 					: src ? " Source genes/proteins: "
 							: " Target genes/proteins: ";
 			setBorder(panel, title);
-			// final JRadioButton browseMode = new
-			// JRadioButton("  List of names (comma separated) ");
-			// final JRadioButton textMode = new
-			// JRadioButton(" Read from file (one name per line) ");
+
 			final JRadioButton browseMode = new JRadioButton("Read from file");
 			browseMode
 					.setToolTipText(" There should be one name per line in the input file ");
@@ -1117,9 +1112,6 @@ public class MyStrongestPathPlugin extends AbstractCySwingApp {
 			String title = src ? " Source genes/proteins: "
 					: " Target genes/proteins: ";
 			setBorder(panel, title);
-			// final JRadioButton browseMode = new JRadioButton(" From file ");
-			// final JRadioButton textMode = new
-			// JRadioButton(" Manual input (comma separated) ");
 
 			final JRadioButton browseMode = new JRadioButton("Read from file");
 			browseMode
@@ -1275,10 +1267,7 @@ public class MyStrongestPathPlugin extends AbstractCySwingApp {
 					subNetworks.put(databaseName, new StrongestPath(species,
 							nomen, "binary-" + DATAspecies + "-" + databaseName
 									+ "-PPI.txt"));
-					// JOptionPane.showMessageDialog(null, databaseName);
-					// subNetworks.put(databaseName, new StrongestPath(species,
-					// nomen, "binary-"
-					// + DATAspecies + "-" + databaseName + "-PPI.txt"));
+
 				} catch (IOException e) {
 					JOptionPane.showMessageDialog(null, e.getMessage());
 					e.printStackTrace();
@@ -1309,12 +1298,6 @@ public class MyStrongestPathPlugin extends AbstractCySwingApp {
 			step = 0;
 
 			try {
-				// if (nomen == null) {
-				// if (annotFromFile)
-				// nomen = new Nomenclature(DATAspecies, annotFile);
-				// else
-				// nomen = new Nomenclature(DATAspecies, null);
-				// }
 
 				// ***** Converts the database according to the nomenClature
 				// *****//
@@ -1345,8 +1328,6 @@ public class MyStrongestPathPlugin extends AbstractCySwingApp {
 				String[] sources, ArrayList<String> dATAdatabaseNames)
 				throws Exception {
 
-			// Map<String, Double> confidences = new HashMap<String, Double>();
-			// subNetworks = new HashMap<String, StrongestPath>();
 
 			for (String databaseName : dATAdatabaseNames) {
 				StrongestPath strongestPath = null;
@@ -1388,7 +1369,6 @@ public class MyStrongestPathPlugin extends AbstractCySwingApp {
 		}
 
 		private void doKStrongestPath() {
-			// JOptionPane.showMessageDialog(null, "doKStrongestPath");
 			int species = 0;
 			if (DATAspecies.equals(HUMAN))
 				species = 0;
@@ -1398,13 +1378,6 @@ public class MyStrongestPathPlugin extends AbstractCySwingApp {
 			step = 0;
 
 			try {
-				// if (nomen == null) {
-				// if (annotFromFile)
-				// nomen = new Nomenclature(DATAspecies, annotFile);
-				// else
-				// nomen = new Nomenclature(DATAspecies, null);
-				// }
-				// System.out.println("nomen is null");
 
 				// ***** Converts the database according to the nomenClature
 				// *****//
@@ -1514,6 +1487,8 @@ public class MyStrongestPathPlugin extends AbstractCySwingApp {
 			}
 			bw.close();
 			bw2.close();
+			br.close();
+			lnr.close();
 
 		}
 
@@ -1530,12 +1505,8 @@ public class MyStrongestPathPlugin extends AbstractCySwingApp {
 			Map<String, Double> confidences = new HashMap<String, Double>();
 			StrongestPath strongestPath = null;
 			for (String databaseName : dATAdatabaseNames) {
-				// if (!subNetworks.containsKey(databaseName)) {
-				// strongestPath = new StrongestPath(species, nomen, "binary-"
-				// + DATAspecies + "-" + databaseName + "-PPI.txt");
-				// } else {
+
 				strongestPath = subNetworks.get(databaseName);
-				// }
 				step = 3;
 				strongestPath.setSources(sources);
 				step = 4;
@@ -1659,8 +1630,6 @@ public class MyStrongestPathPlugin extends AbstractCySwingApp {
 			CyNetworkView networkView = getNetworkView(createNetwork, network);
 			adapter.getCyNetworkManager().addNetwork(network);
 			adapter.getCyNetworkViewManager().addNetworkView(networkView);
-			// Old 2.x
-			// graphStyle.setNodeSizeLocked(false);
 
 			Integer max = Collections.max(subGraph.values());
 
@@ -1705,7 +1674,6 @@ public class MyStrongestPathPlugin extends AbstractCySwingApp {
 					network.getRow(node).set("nodeID", s);
 					newNodes.add(node);
 					newStrings.add(s);
-					// adapter.getCyEventHelper().flushPayloadEvents();
 				}
 
 				/* Change color and shape of the node in the network */
@@ -1719,18 +1687,18 @@ public class MyStrongestPathPlugin extends AbstractCySwingApp {
 				nodeStyleWithShape(
 						getNodeWithValue(network, "nodeID", allNodes.get(i)
 								.getKey().toString()), nomen.Convert(
-								nomen.IDtoName(allNodes.get(i).getValue()),
+								nomen.IDtoName(allNodes.get(i).getKey()),
 								"Official_Gene_Symbol"),
 						NodeShapeVisualProperty.ELLIPSE, new Color(255, g, g));
+				
+				/*nodeStyleWithShape(newNodes.get(i), nomen.Convert(
+						nomen.IDtoName(Integer.parseInt(s)),
+						"Official_Gene_Symbol"),
+						NodeShapeVisualProperty.ELLIPSE, null);*/
 			}
 
 			/* add edges to the network */
 			CyEdge edge;
-
-			/*
-			 * OLD 2.x CyAttributes cyNodeAttrs; CyAttributes cyEdgeAttrs;
-			 */
-			// New 3.x
 			CyNode node1, node2;
 
 			for (Pair p : edges) {
@@ -2059,6 +2027,7 @@ public class MyStrongestPathPlugin extends AbstractCySwingApp {
 				 */
 				// New 3.x
 				step = 29;
+				/*
 				network.getRow(node1).set(
 						"Path Confidence",
 						Double.toString(1.0 / Math.pow(2,
@@ -2067,7 +2036,7 @@ public class MyStrongestPathPlugin extends AbstractCySwingApp {
 						"Path Confidence",
 						Double.toString(1.0 / Math.pow(2,
 								confidences.get(p.right))));
-
+*/
 				/*
 				 * Old 2.x edge = Cytoscape.getCyEdge(node1, node2,
 				 * Semantics.INTERACTION, "pp", true); cyEdgeAttrs =
@@ -2313,23 +2282,9 @@ public class MyStrongestPathPlugin extends AbstractCySwingApp {
 		private void nodeStyle3(CyNode node, Nomenclature nomen, int nodeId)
 				throws NumberFormatException, Exception {
 
-			// int suid = node.getSUID().intValue();
 
 			String officialSymbol = nomen.Convert(nomen.IDtoName(nodeId),
 					"Official_Gene_Symbol");
-
-			// graphStyle.addProperty(node1.getSUID(),
-			// VisualPropertyType.NODE_LABEL, officialSymbol);
-			// graphStyle.addProperty(node1.getSUID(),
-			// VisualPropertyType.NODE_WIDTH, "50");
-			// graphStyle.addProperty(node1.getSUID(),
-			// VisualPropertyType.NODE_HEIGHT, "50");
-			// graphStyle.addProperty(node1.getSUID(),
-			// VisualPropertyType.NODE_FILL_COLOR, "#00FAFA");
-			// graphStyle
-			// .addProperty(node1.getSUID(),
-			// VisualPropertyType.NODE_SHAPE,
-			// NodeShape.ELLIPSE.getShapeName());
 
 			Color color = new Color(0, 250, 250);
 			step = 281;
@@ -2383,11 +2338,10 @@ public class MyStrongestPathPlugin extends AbstractCySwingApp {
 	private void buildNetwork(CyNetwork network, CyNetworkView networkView,
 			String networkTitle, boolean disposeFrame) {
 
-		// adapter.getCyNetworkManager().addNetwork(network);
-		// adapter.getCyNetworkViewManager().addNetworkView(networkView);
-
+	
 		/*
-		 * //TODO Uncomment next few lines CyLayoutAlgorithm layoutAlgorithm =
+		 * //TODO Convert next few lines to the new 3.x 
+		 * CyLayoutAlgorithm layoutAlgorithm =
 		 * adapter .getCyLayoutAlgorithmManager().getAllLayouts().iterator()
 		 * .next(); TaskIterator itr =
 		 * layoutAlgorithm.createTaskIterator(networkView,
@@ -2395,7 +2349,5 @@ public class MyStrongestPathPlugin extends AbstractCySwingApp {
 		 * CyLayoutAlgorithm.ALL_NODE_VIEWS, null);
 		 * adapter.getTaskManager().execute(itr);
 		 */
-		// if (disposeFrame)
-		// frame.dispose();
 	}
 }
