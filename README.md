@@ -9,12 +9,12 @@ StrongestPath is a Cytoscape plugin that allows users to find the most confident
 * [Balloon tooltip java library](https://balloontip.java.net)
 * Cytoscape 3.x jar file.
 
-Both are included in the project files under _lib_ folder.
+Both are included in the project files under `lib` folder.
 
 
 ## How to compile
 
-Please run the following commands in the same directory as the .java files are located.
+Please run the following commands in the same directory as the `.java` files are located.
 ```
 javac -source 1.6 -cp ".:./lib/*" *.java
 jar cfm StrongestPath.jar META-INF/MANIFEST.MF *.class
@@ -28,9 +28,7 @@ All you need to get started is Cytoscape 3.x and the StrongestPath app!
 
 1- Download and install [Cytoscape](http://www.cytoscape.org).
 
-2- Download the app from the following URL:
-
-[Strongest Path](http://apps.cytoscape.org/apps/strongestpath)
+2- Download the app from here: [Strongest Path](http://apps.cytoscape.org/apps/strongestpath)
 
 <!-- 3- More detailed information can be found in the Installation Section. -->
 
