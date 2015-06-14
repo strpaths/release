@@ -8,6 +8,9 @@ import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.GridLayout;
 import java.awt.LayoutManager;
+import java.awt.Toolkit;
+import java.awt.datatransfer.Clipboard;
+import java.awt.datatransfer.StringSelection;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.awt.event.FocusEvent;
@@ -25,6 +28,7 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.LineNumberReader;
+import java.io.UnsupportedEncodingException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -62,9 +66,15 @@ import javax.swing.border.TitledBorder;
 import javax.swing.event.ChangeEvent;
 import javax.swing.event.ChangeListener;
 
+import net.java.balloontip.BalloonTip;
+import net.java.balloontip.styles.BalloonTipStyle;
+import net.java.balloontip.styles.RoundedBalloonStyle;
+import net.java.balloontip.utils.ToolTipUtils;
+
 import org.cytoscape.app.CyAppAdapter;
 import org.cytoscape.app.swing.AbstractCySwingApp;
 import org.cytoscape.app.swing.CySwingAppAdapter;
+import org.cytoscape.application.CyApplicationConfiguration;
 import org.cytoscape.application.CyApplicationManager;
 import org.cytoscape.application.swing.AbstractCyAction;
 import org.cytoscape.model.CyEdge;
@@ -160,8 +170,8 @@ public class MyStrongestPathPlugin extends AbstractCySwingApp {
 
 		protected int selectDBWidth = 350;
 		protected int selectDBHeight = 300;
-		protected int userDBPanelWidth = 500;
-		protected int userDBPanelHeight = 300;
+		protected int userDBPanelWidth = 700;
+		protected int userDBPanelHeight = 500;
 		protected int pluginWidth = 600;
 		protected int pluginHeight = 700;
 		protected int tabbedPaneWidth = 600 - 60;
@@ -200,6 +210,7 @@ public class MyStrongestPathPlugin extends AbstractCySwingApp {
 
 		private GridBagConstraints gbc = new GridBagConstraints();
 
+		private boolean userDatabase = false;
 		private ActionListener srcActionListener;
 		private ActionListener dstActionListener;
 		private boolean srcFromFile = false;
@@ -251,10 +262,9 @@ public class MyStrongestPathPlugin extends AbstractCySwingApp {
 			for (String dbn : subNetworks.keySet())
 				subNetworks.put(dbn, null);
 			for (String dbn : subNetworks.keySet())
-				subNetworks.put(dbn, null);
-			subNetworks = null;
-			subNetworks = null;
-			nomen = null;
+			subNetworks.put(dbn, null);
+//			subNetworks = null;
+//			nomen = null;
 			System.gc();
 		}
 
@@ -271,26 +281,37 @@ public class MyStrongestPathPlugin extends AbstractCySwingApp {
 					UIManager.put("swing.boldMetal", Boolean.FALSE);
 					initPlugin();
 					showFrame();
+					
+					
 				}
 			});
 		}
 
 		public void initPlugin() {
 
+			
+			DependencyHandler dh = new DependencyHandler();
+			dh.resolveAllDependencies();
+			
+			
 			topPanel = new JPanel(false);
 
 			initializePluginMainPanel();
 			initializeUploadUserDatabase();
 			initializeSelectDatabaseModePanel();
 
+			
 			panelList = new JComponent[] { databaseModePanel,
 					uploadUserDBPanel, pluginMainPanel };
 			topPanel.setPreferredSize(new Dimension(selectDBWidth,
 					selectDBHeight));
 			databaseModePanel.setPreferredSize(new Dimension(
 					selectDBWidth - 40, selectDBHeight - 30));
+//			uploadUserDBPanel.setPreferredSize(new Dimension(
+//					userDBPanelWidth - 40, userDBPanelHeight - 30));
+			
 			uploadUserDBPanel.setPreferredSize(new Dimension(
-					userDBPanelWidth - 40, userDBPanelHeight - 30));
+					500, 300));
 			pluginMainPanel.setPreferredSize(new Dimension(pluginWidth - 40,
 					pluginHeight - 30));
 
@@ -332,7 +353,7 @@ public class MyStrongestPathPlugin extends AbstractCySwingApp {
 			databaseModePanel.setLayout(new GridLayout(2, 1));
 
 			final JRadioButton userDatabaseButton = new JRadioButton(
-					"User Provided Databes");
+					"User Provided Database");
 			final JRadioButton internalDatabaseButton = new JRadioButton(
 					"Internal Database");
 			ButtonGroup group = new ButtonGroup();
@@ -370,14 +391,31 @@ public class MyStrongestPathPlugin extends AbstractCySwingApp {
 				public void actionPerformed(ActionEvent arg0) {
 					panelList[0].setVisible(false);
 					if (userDatabaseButton.isSelected()) {
-						panelList[1].setVisible(true);
-						setInternalNetworkPanalEnabled(false);
+						userDatabase = true;
+						Thread t = new Thread() {
+							public void run() {
+								SwingUtilities.invokeLater(new Runnable() {
+									public void run() {
+										panelList[1].setVisible(true);
+										setInternalNetworkPanalEnabled(false);
+										topPanel.setPreferredSize(new Dimension(
+												500, 300));
+										frame.pack();
+									}
+								});
+							}
+						};
+						t.start();
+						topPanel.setSize(500,300);
 						topPanel.setPreferredSize(new Dimension(
-								userDBPanelWidth, userDBPanelHeight));
+								500, 300));
+//						frame.setSize(new Dimension(500, 300));
+//						frame.setPreferredSize(new Dimension(500, 300));
 						frame.pack();
+						
 					} else {
 						// **********
-
+						userDatabase = false;
 						final JPanel p1 = new JPanel(new GridBagLayout());
 						p1.add(new JLabel(
 								"Loading the databases. Please wait ..."),
@@ -435,10 +473,10 @@ public class MyStrongestPathPlugin extends AbstractCySwingApp {
 			JButton next = new JButton(" Next ");
 			nextPanel.add(next, gbc);
 
+			uploadUserDBPanel.setPreferredSize(new Dimension(500, 300));
 			uploadUserDBPanel.add(annotationPanel);
 			uploadUserDBPanel.add(userDBPanel);
 			uploadUserDBPanel.add(nextPanel);
-
 			// **************** Action listeners
 			next.addActionListener(new ActionListener() {
 
@@ -669,22 +707,12 @@ public class MyStrongestPathPlugin extends AbstractCySwingApp {
 						JOptionPane.showMessageDialog(null,
 								" Please select your source genes ");
 						srcTextFieldE.requestFocus();
-					} else if (dstFromFile
-							&& dstfileAddress.getText().equals("")) {
-						JOptionPane.showMessageDialog(null,
-								" Please select your source genes ");
-						dstActionListener.actionPerformed(arg0);
-					} else if (!dstFromFile
-							&& dstTextField.getText().equals("")) {
-						JOptionPane.showMessageDialog(null,
-								" Please select your source genes ");
-						dstTextField.requestFocus();
-					} else {
+					}else {
 
 						DATAsrcfilePath = srcfileAddressE.getText();
 						DATAsrctextField = srcTextFieldE.getText();
-						DATAdstfilePath = dstfileAddress.getText();
-						DATAdsttextField = dstTextField.getText();
+//						DATAdstfilePath = dstfileAddress.getText();
+//						DATAdsttextField = dstTextField.getText();
 						if (humanRadioButton.isSelected()) {
 							DATAspecies = HUMAN;
 						}
@@ -926,10 +954,11 @@ public class MyStrongestPathPlugin extends AbstractCySwingApp {
 
 			JPanel panel = new JPanel(false);
 			String title = annotOrDB ? " Select Annotation File: "
-					: " Select Dababase File: ";
+					: " Select Database File: ";
 			setBorder(panel, title);
 
 			final JTextField fileAddress = new JTextField(20);
+			
 			final JButton browseButton = new JButton("Browse");
 			panel.add(fileAddress);
 			panel.add(browseButton);
@@ -1000,11 +1029,11 @@ public class MyStrongestPathPlugin extends AbstractCySwingApp {
 			setBorder(panel, title);
 
 			final JRadioButton browseMode = new JRadioButton("Read from file");
-			browseMode
-					.setToolTipText(" There should be one name per line in the input file ");
+//			browseMode
+//					.setToolTipText(" There should be one name per line in the input file ");
 			final JRadioButton textMode = new JRadioButton(
 					"List of names                        ");
-			textMode.setToolTipText(" Genes/Proteins should be separated by comma ");
+//			textMode.setToolTipText(" Genes/Proteins should be separated by comma ");
 			ButtonGroup group = new ButtonGroup();
 			group.add(browseMode);
 			group.add(textMode);
@@ -1015,25 +1044,52 @@ public class MyStrongestPathPlugin extends AbstractCySwingApp {
 
 			JPanel browsePanel = new JPanel(false);
 			final JTextField fileAddress = new JTextField(20);
-			fileAddress
-					.setToolTipText(" There should be one name per line in the input file ");
+//			fileAddress
+//					.setToolTipText(" There should be one name per line in the input file ");
 			final JButton browseButton = new JButton("Browse");
 			browsePanel.add(browseButton);
 			browsePanel.add(fileAddress);
 			browseOuterPanel.add(browseMode);
 			browseOuterPanel.add(browsePanel);
 
+			BalloonTipStyle btStyle = new RoundedBalloonStyle(5, 5, new Color(255, 255, 204), new Color(204, 204, 0));
+			btStyle.setHorizontalOffset(20);
+			btStyle.setVerticalOffset(10);
+			BalloonTip bt;
+			if (src)
+			{
+				bt = new BalloonTip(browseButton, 
+						"<html>There should be one name per line in the input file. <br><br><i>e.g.<i> <br>pou5f1 <br>nanog <br>sall4</html>",
+						btStyle, false);
+			}	
+			else
+			{
+				bt = new BalloonTip(browseButton, 
+						"<html>There should be one name per line in the input file. <br><br><i>e.g.<i> <br>cdx2 <br>eomes <br>tead4</html>",
+						btStyle,
+						false);
+			}
+			ToolTipUtils.balloonToToolTip(bt, 1, 7000);
+
 			final JPanel textOuterPanel = new JPanel(false);
 			textOuterPanel.setLayout(new FlowLayout());
 			JPanel textPanel = new JPanel(false);
 			final JTextField textfield = new JTextField(20);
-			textfield
-					.setToolTipText(" Genes/Proteins should be separated by comma ");
+			BalloonTip bt2;
 			if (src)
-				textfield.setText("nanog, pou5f1, sall4");
+			{
+				bt2 = new BalloonTip(textfield, 
+						"<html>Genes/Proteins sholud be separated by comma. <br><i>e.g.<i> pou5f1, nanog, sall4</html>",
+						btStyle, false);
+			}	
 			else
-				textfield.setText("cdx2, eomes, tead4");
-
+			{
+				bt2 = new BalloonTip(textfield, 
+						"<html>Genes/Proteins sholud be separated by comma. <br><i>e.g.<i> cdx2, eomes, tead4</html>",
+						btStyle,
+						false);
+			}
+			ToolTipUtils.balloonToToolTip(bt2, 1, 7000);
 			textPanel.add(textfield);
 			textOuterPanel.add(textMode);
 			textOuterPanel.add(textPanel);
@@ -1130,21 +1186,58 @@ public class MyStrongestPathPlugin extends AbstractCySwingApp {
 
 			JPanel browsePanel = new JPanel(false);
 			final JTextField fileAddress = new JTextField(20);
+			
+			
 			final JButton browseButton = new JButton("Browse");
 			browsePanel.add(browseButton);
 			browsePanel.add(fileAddress);
 			browseOuterPanel.add(browseMode);
 			browseOuterPanel.add(browsePanel);
 
+			BalloonTipStyle btStyle = new RoundedBalloonStyle(5, 5, new Color(255, 255, 204), new Color(204, 204, 0));
+			btStyle.setHorizontalOffset(20);
+			btStyle.setVerticalOffset(10);
+			BalloonTip bt;
+			if (src)
+			{
+				bt = new BalloonTip(browseButton, 
+						"<html>There should be one name per line in the input file. <br><br><i>e.g.<i> <br>pou5f1 <br>nanog <br>sall4</html>",
+						btStyle, false);
+			}	
+			else
+			{
+				bt = new BalloonTip(browseButton, 
+						"<html>There should be one name per line in the input file. <br><br><i>e.g.<i> <br>cdx2 <br>eomes <br>tead4</html>",
+						btStyle,
+						false);
+			}
+			ToolTipUtils.balloonToToolTip(bt, 1, 7000);
+
 			final JPanel textOuterPanel = new JPanel(false);
 			textOuterPanel.setLayout(new FlowLayout());
 			JPanel textPanel = new JPanel(false);
 			final JTextField textfield = new JTextField(20);
+			BalloonTip bt2;
+			if (src)
+			{
+				bt2 = new BalloonTip(textfield, 
+						"<html>Genes/Proteins sholud be separated by comma. <br><i>e.g.<i> pou5f1, nanog, sall4</html>",
+						btStyle, false);
+			}	
+			else
+			{
+				bt2 = new BalloonTip(textfield, 
+						"<html>Genes/Proteins sholud be separated by comma. <br><i>e.g.<i> cdx2, eomes, tead4</html>",
+						btStyle,
+						false);
+			}
+			ToolTipUtils.balloonToToolTip(bt2, 1, 7000);
+			/*
 			if (src)
 				textfield.setText("nanog, pou5f1, sall4");
 			else
 				textfield.setText("cdx2, eomes, tead4");
-
+			 */
 			textPanel.add(textfield);
 			textOuterPanel.add(textMode);
 			textOuterPanel.add(textPanel);
@@ -1234,10 +1327,17 @@ public class MyStrongestPathPlugin extends AbstractCySwingApp {
 			// nomenClature
 
 			String databaseName = "User";
-			subNetworks.put(databaseName, new StrongestPath(species, nomen,
-					"binary-" + DATAspecies + "-" + databaseName + "-PPI.txt"));
-			subNetworks.put(databaseName, new StrongestPath(species, nomen,
-					"binary-" + DATAspecies + "-" + databaseName + "-PPI.txt"));
+			
+			subNetworks = new HashMap<String, StrongestPath>();
+			try {
+				subNetworks.put(databaseName, new StrongestPath(species, nomen,
+						"binary-" + DATAspecies + "-" + databaseName + "-PPI.txt"));
+				subNetworks.put(databaseName, new StrongestPath(species, nomen,
+						"binary-" + DATAspecies + "-" + databaseName + "-PPI.txt"));				
+			} catch (Exception e) {
+				JOptionPane.showMessageDialog(null, e.getMessage());
+				// TODO: handle exception
+			}
 
 		}
 
@@ -1259,6 +1359,8 @@ public class MyStrongestPathPlugin extends AbstractCySwingApp {
 			}
 			subNetworks = new HashMap<String, StrongestPath>();
 			// subNetworks = new HashMap<String, StrongestPath>();
+			
+			subNetworks.remove("User");
 			for (String databaseName : databases) {
 				if (DATAspecies.equals(MOUSE)
 						&& excludeDatabases.contains(databaseName))
@@ -1273,6 +1375,8 @@ public class MyStrongestPathPlugin extends AbstractCySwingApp {
 					e.printStackTrace();
 				}
 			}
+			
+
 		}
 
 		private void doExpand() {
@@ -1331,8 +1435,11 @@ public class MyStrongestPathPlugin extends AbstractCySwingApp {
 
 			for (String databaseName : dATAdatabaseNames) {
 				StrongestPath strongestPath = null;
+				if(!userDatabase && databaseName.equals("User"))
+					continue;
 				strongestPath = subNetworks.get(databaseName);
 				step = 3;
+				
 				strongestPath.setSources(sources);
 				step = 4;
 				Vector<Pair> edges = strongestPath.getSubNetwork(databaseName);
@@ -1397,10 +1504,10 @@ public class MyStrongestPathPlugin extends AbstractCySwingApp {
 					for (int j = 0; j < destinations.length; j++) {
 						if (sources[i].equals(destinations[j]))
 							throw new Exception(
-									"'"
-											+ sources[i]
+									"'" + sources[i]
 											+ "' is in both sources and destination genes.");
 					}
+			
 				doStrongestPathOnEachDatabase(species, nomen, sources,
 						destinations, DATAdatabaseNames);
 			} catch (Exception e) {
@@ -1416,7 +1523,7 @@ public class MyStrongestPathPlugin extends AbstractCySwingApp {
 
 		public void convertFile(String species, Nomenclature nomen)
 				throws Exception {
-			String root = new File("plugins", "files").toString();
+			String root = new File(getRoot(), "files").toString();
 			File file = new File(new File(root, species).toString(), "/binary-"
 					+ species + "-User-PPI.txt");
 			File file2 = new File(new File(root, species).toString(),
@@ -1505,7 +1612,8 @@ public class MyStrongestPathPlugin extends AbstractCySwingApp {
 			Map<String, Double> confidences = new HashMap<String, Double>();
 			StrongestPath strongestPath = null;
 			for (String databaseName : dATAdatabaseNames) {
-
+				if(!userDatabase && databaseName.equals("User"))
+					continue;
 				strongestPath = subNetworks.get(databaseName);
 				step = 3;
 				strongestPath.setSources(sources);
@@ -2277,6 +2385,19 @@ public class MyStrongestPathPlugin extends AbstractCySwingApp {
 			// Display the window.
 			frame.pack();
 			frame.setVisible(true);
+			frame.addWindowListener(new java.awt.event.WindowAdapter() {
+			    @Override
+			    public void windowClosing(java.awt.event.WindowEvent windowEvent) {
+			        try {
+			        	doFinalize();
+						
+					} catch (Exception e) {
+						// TODO: handle exception
+						JOptionPane.showMessageDialog(null, "Didn't manage to finalize the app.");
+					}
+			        
+			    }
+			});
 		}
 
 		private void nodeStyle3(CyNode node, Nomenclature nomen, int nodeId)
@@ -2349,5 +2470,24 @@ public class MyStrongestPathPlugin extends AbstractCySwingApp {
 		 * CyLayoutAlgorithm.ALL_NODE_VIEWS, null);
 		 * adapter.getTaskManager().execute(itr);
 		 */
+	}
+	public static String getHigherFolder(String path)
+	{
+		int lastSepIndex = path.indexOf(File.separator, path.indexOf("Cytoscape"));
+		String path1 = path.substring(0, lastSepIndex+1);
+		String result;
+		try {
+			result = java.net.URLDecoder.decode(path1, "UTF-8");
+		} catch (UnsupportedEncodingException e) {
+			// TODO Auto-generated catch block
+			result = path1.replace("%20", " ");
+			e.printStackTrace();
+		}
+		return result;
+	}
+	public static String getRoot()
+	{
+		
+		return getHigherFolder(new File(MyStrongestPathPlugin.class.getProtectionDomain().getCodeSource().getLocation().getPath()).getParent());
 	}
 }

@@ -103,10 +103,7 @@ public final class Dijkstra {
                 /* If we already know the shortest path from the source to
                  * this node, don't add the edge.
                  */
-            	if(curr.equals(1017))
-            		System.out.println("edge from 1017: "+arc.getKey());
-            	if(curr.equals(2262))
-            		System.out.println("edge from 2262: "+arc.getKey());
+            	
             	
                 if (result.containsKey(arc.getKey())) continue;
 

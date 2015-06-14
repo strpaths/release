@@ -45,7 +45,7 @@ public class DataBaseManager {
 	
 	public static String getDataBasePath(String species, String databaseName)
 	{
-		String root = new File("plugins","files").toString();
+		String root = new File(Resources.getRoot(),"files").toString();
 		return new File(new File(root, species).toString(), databaseName).toString();
 	}
 	
