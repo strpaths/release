@@ -244,6 +244,18 @@ public class MyStrongestPathPlugin extends AbstractCySwingApp {
 
 		}
 
+		protected void bringToTheFront()
+		{		
+			java.awt.EventQueue.invokeLater(new Runnable() {
+			    @Override
+			    public void run() {
+			        frame.toFront();
+			        frame.repaint();
+			    }
+			});
+		}
+		
+		
 		protected void addNodeIDColumn(CyNetwork network) {
 			CyTable nodeTable = network.getDefaultNodeTable();
 			CyTable edgeTable = network.getDefaultEdgeTable();
@@ -1382,6 +1394,7 @@ public class MyStrongestPathPlugin extends AbstractCySwingApp {
 		private void doExpand() {
 			try {
 				expandAndShowNetwork(nomen, DATAdatabaseNames, numberOfNewNodes);
+				bringToTheFront();
 			} catch (Exception e) {
 				String message = "[doExpand: Step " + step + "] Error: ";
 				JOptionPane.showMessageDialog(null,
@@ -1416,6 +1429,7 @@ public class MyStrongestPathPlugin extends AbstractCySwingApp {
 
 				step = 2;
 				showNetwork(species, nomen, sources, DATAdatabaseNames);
+				bringToTheFront();
 
 			} catch (Exception e) {
 				String message = "[doDisplayNetwork: Step " + step
@@ -1510,6 +1524,7 @@ public class MyStrongestPathPlugin extends AbstractCySwingApp {
 			
 				doStrongestPathOnEachDatabase(species, nomen, sources,
 						destinations, DATAdatabaseNames);
+				bringToTheFront();
 			} catch (Exception e) {
 				String message = "[doKStrongestPath: Step " + step
 						+ "] Error: ";
