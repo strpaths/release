@@ -17,7 +17,7 @@ Both are included in the project files under `lib` folder.
 Please run the following commands in the same directory as the `.java` files are located.
 ```
 javac -source 1.6 -cp ".:./lib/*" *.java
-jar cfm StrongestPath.jar META-INF/MANIFEST.MF *.class
+jar cfm StrongestPath.jar META-INF/MANIFEST.MF *.class ./net
 ```
 
 
